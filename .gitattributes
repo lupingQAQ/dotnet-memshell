@@ -1,0 +1,7 @@
+# Normalize line endings; keep sources as UTF-8 text (no BOM).
+* text=auto eol=lf
+
+*.md   text eol=lf
+*.cs   text eol=lf
+*.aspx text eol=lf
+*.ps1  text eol=lf

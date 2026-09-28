@@ -1,4 +1,4 @@
-﻿// payloads/WsTakeoverShell.cs
+// payloads/WsTakeoverShell.cs
 // ---------------------------------------------------------------------------
 // Memory shell #2: WebSocket connection takeover (the .NET port of the WebSocket
 // memory-shell idea: take the connection away from request/response processing).
