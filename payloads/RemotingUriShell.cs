@@ -49,11 +49,15 @@ public class E
 
     private static Assembly Resolve(object sender, ResolveEventArgs e)
     {
-        // Bridge EVERY failed assembly resolution back to this payload assembly. The remoting
+        // Bridge failed resolutions back to this payload assembly. Needed because the remoting
         // method-call message carries the CLIENT-side proxy type name ("<type>, <client
-        // assembly>"), and the server formatter resolves that type before dispatch - so a
-        // standalone client (see tools/RemotingShellClient.cs, stub nested as E.Svc) only
-        // works if the unknown assembly name resolves here and the type name matches.
+        // assembly>") and the server formatter resolves it before dispatch.
+        // Narrowed: never hijack framework/system assembly names, so unrelated missing
+        // dependencies in the host keep their normal FileNotFoundException behaviour.
+        string simple = new AssemblyName(e.Name).Name;
+        if (simple == "mscorlib" || simple == "System" || simple.StartsWith("System.") ||
+            simple.StartsWith("Microsoft.") || simple.StartsWith("netstandard"))
+            return null;
         return typeof(E).Assembly;
     }
 

