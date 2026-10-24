@@ -1,6 +1,12 @@
 # dotnet-memshell
 
+> **📦 本项目已合并到 [ysonet](https://github.com/irsdl/ysonet)。**
+>
+> 合并提交为 [`37ece6f`](https://github.com/irsdl/ysonet/commit/37ece6fa2d3b66d90e802cd00d34e84abd57fb38)。后续开发在 ysonet 进行，请直接使用 [ysonet](https://github.com/irsdl/ysonet)。本仓库仅保留历史记录。
+
 > **⚠️ 仅用于授权安全测试。** · [English](README.md)
+
+[![状态：已合并到 ysonet](https://img.shields.io/badge/Status-Merged%20into%20ysonet-blue?style=flat-square)](https://github.com/irsdl/ysonet)
 
 [![.NET Framework 4.5+](https://img.shields.io/badge/.NET%20Framework-4.5%2B-blue?style=flat-square)](https://dotnet.microsoft.com/)
 [![Payload Files](https://img.shields.io/badge/Payload%20Files-1%20single%20.cs-green?style=flat-square)]()
@@ -100,6 +106,8 @@ E()
 3. **Remoting 客户端须引用业务程序集**：SAO 调用要求客户端代理类型名与服务端一致，客户端需引用业务 dll（Remoting 固有约束，非本马缺陷）。
 
 ## 🔌 用法
+
+> **历史说明：** 以下命令描述的是合并时的本仓库。后续用法与维护请见 [ysonet](https://github.com/irsdl/ysonet)。
 
 生成与投递（前提：目标 `machineKey` 已知/泄露）：
 ```bash

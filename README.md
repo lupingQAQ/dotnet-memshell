@@ -1,6 +1,12 @@
 # dotnet-memshell
 
+> **📦 This project has been merged into [ysonet](https://github.com/irsdl/ysonet).**
+>
+> The merge was completed in commit [`37ece6f`](https://github.com/irsdl/ysonet/commit/37ece6fa2d3b66d90e802cd00d34e84abd57fb38). Development continues in ysonet. Please use [ysonet](https://github.com/irsdl/ysonet) directly. This repository is kept for historical reference only.
+
 > **⚠️ For authorized security testing only.** · [中文](README.zh-CN.md)
+
+[![Status: merged into ysonet](https://img.shields.io/badge/Status-Merged%20into%20ysonet-blue?style=flat-square)](https://github.com/irsdl/ysonet)
 
 [![.NET Framework 4.5+](https://img.shields.io/badge/.NET%20Framework-4.5%2B-blue?style=flat-square)](https://dotnet.microsoft.com/)
 [![Payload Files](https://img.shields.io/badge/Payload%20Files-1%20single%20.cs-green?style=flat-square)]()
@@ -101,6 +107,8 @@ trigger: remoting client → tcp://host:<business-port>/msh → Svc.Exec(cmd)
 3. **Remoting clients must reference the service assembly** so the proxy type name matches the server's (inherent Remoting requirement, not a shell defect).
 
 ## 🔌 Usage
+
+> **Historical note:** the commands below describe this repository at the time of the merge. New usage and maintenance are in [ysonet](https://github.com/irsdl/ysonet).
 
 Generate & deliver (requires a known/leaked `machineKey`):
 ```bash
